@@ -1,0 +1,62 @@
+version: '3.8'
+
+services:
+  sqlserverdb:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    container_name: sqlserverdb
+    environment:
+      SA_PASSWORD: "Your_password123"  # Cambia esto por una contraseña segura
+      ACCEPT_EULA: "Y"
+    ports:
+      - "1433:1433"
+    volumes:
+      - sqlserverdata:/var/opt/mssql
+      - ./init-db:/init-db
+    networks:
+      - app-network
+
+  db-init:
+    image: mcr.microsoft.com/mssql-tools
+    container_name: db-init
+    depends_on:
+      - sqlserverdb
+    environment:
+      SA_PASSWORD: "Your_password123"
+      ACCEPT_EULA: "Y"
+    volumes:
+      - ./init-db:/init-db
+      - ./scripts:/scripts
+    entrypoint: /bin/bash
+    command: -c "echo 'Esperando que SQL Server esté listo...' && ./init-db/wait-for-it.sh sqlserverdb:1433 --timeout=120 --strict -- /opt/mssql-tools/bin/sqlcmd -S sqlserverdb -U sa -P Your_password123 -i /init-db/init.sql"
+    networks:
+      - app-network
+
+  apirecognitionrewards:
+    build:
+      context: .
+      dockerfile: ApiRecognitionRewards/Dockerfile
+    container_name: apirecognitionrewards
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development
+      - ASPNETCORE_URLS=http://0.0.0.0:80
+      - ConnectionStrings__DefaultConnection=Server=sqlserverdb;Database=RecognitionRewardsDb;User=sa;Password=Your_password123;
+      - JwtSettings__Secret=YourVerySecureSecretKey
+      - JwtSettings__Issuer=YourIssuer
+      - JwtSettings__Audience=YourAudience
+      - JwtSettings__ExpiryMinutes=60
+    ports:
+      - "5000:80"  # Mapea el puerto 80 del contenedor al puerto 5000 del host
+    depends_on:
+      - sqlserverdb
+      - db-init
+    networks:
+      - app-network
+    volumes:
+      - ./ApiRecognitionRewards/Logs:/app/Logs
+
+volumes:
+  sqlserverdata:
+
+networks:
+  app-network:
+    driver: bridge
